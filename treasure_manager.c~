@@ -1,0 +1,26 @@
+#include <stdio.h>
+#include <stdlib.h>
+#include <sys/stat.h>
+#include <erno.h>
+
+
+typedef struct gps
+{
+  float lat;
+  float lung;
+};
+
+typedef struct treasure{
+  char id[5];
+  char user[20];
+  gps coord;
+  char clue[10];
+  int value;
+};
+
+
+int main(int argc, char **argv)
+{
+  
+  return 0;
+}
