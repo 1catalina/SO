@@ -31,6 +31,7 @@ void build_logged_path(char *dest, char *dir)
   build_path(dest, dir);
   strcat(dest, "/logged_hunt");
 }
+/(
 void create_sim(char *old, char *dest, char *dir)
 {
   symlink(old, build_logged_path(dest, dir));
