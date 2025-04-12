@@ -1,0 +1,5 @@
+operatie: add
+operatie: add
+operatie: list
+operatie: view
+operatie: remove_treasure
