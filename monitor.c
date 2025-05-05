@@ -1,0 +1,239 @@
+#include <stdio.h>
+#include <stdio.h>
+#include <stdlib.h>
+#include <signal.h>
+#include <string.h>
+#include <unistd.h>
+#include <dirent.h>
+#include <sys/stat.h>
+#include <fcntl.h>
+
+typedef struct gps
+{
+    float lat;
+    float longt;
+} gps;
+
+typedef struct treasure
+{
+    char id[5];
+    char user[20];
+    gps coord;
+    char clue[10];
+    int value;
+} treasure;
+
+static sig_atomic_t stop_requested_flag = 0;
+static sig_atomic_t command_received_flag = 0;
+
+void handle_usr1(int sig)
+{
+    command_received_flag = 1;
+}
+
+void handle_usr2(int sig)
+{
+    stop_requested_flag = 1;
+}
+
+int is_command_received()
+{
+    return command_received_flag;
+}
+
+int is_stop_requested()
+{
+    return stop_requested_flag;
+}
+
+void clear_command_flag()
+{
+    command_received_flag = 0;
+}
+
+void build_path(char *dest, char *dir)
+{
+    strcpy(dest, dir);
+    strcat(dest, "/treasures.dat");
+}
+
+
+void list_hunts()
+{
+    DIR *d = opendir(".");
+    if (!d)
+    {
+        perror("Nu pot deschide directorul curent");
+        return;
+    }
+
+    struct dirent *entry;
+    while ((entry = readdir(d)) != NULL)
+    {
+        if (entry->d_type == DT_DIR &&
+            strcmp(entry->d_name, ".") != 0 &&
+            strcmp(entry->d_name, "..") != 0)
+        {
+
+            char path[512];
+            snprintf(path, sizeof(path), "%s/treasures.dat", entry->d_name);
+
+            int f = open(path, O_RDONLY);
+            if (f < 0)
+                continue;
+
+            int count = 0;
+            treasure t;
+            while (read(f, &t, sizeof(treasure)) == sizeof(treasure))
+            {
+                count++;
+            }
+            close(f);
+
+            printf("Hunt: %s - %d comori\n", entry->d_name, count);
+        }
+    }
+    closedir(d);
+}
+
+void list_treasures(char *hunt_id)
+{
+    char path[512];
+    build_path(path, hunt_id);
+    int f = open(path, O_RDONLY);
+    if (f == -1)
+    {
+        printf("Eroare deschidere fisier\n");
+        return;
+    }
+
+    struct stat st;
+    stat(path, &st);
+
+    printf("Hunt: %s\n", hunt_id);
+    printf("File size: %ld bytes\n", st.st_size);
+    printf("Last modified: %ld\n", st.st_mtime);
+    printf("---------------------------\n");
+
+    treasure t;
+    while (read(f, &t, sizeof(treasure)) == sizeof(treasure))
+    {
+        printf("id: %s - username: %s - gps: %.4f latitude, %.4f longitude\n",
+               t.id, t.user, t.coord.lat, t.coord.longt);
+        printf("clue: %s - value: %d\n", t.clue, t.value);
+        printf("---------------------------\n");
+    }
+    close(f);
+
+}
+
+void view_treasure(char *hunt, char *id)
+{
+    char path[512];
+    build_path(path, hunt);
+    int f = open(path, O_RDONLY);
+    if (f == -1)
+    {
+        printf("Eroare deschidere fisier\n");
+        return;
+    }
+
+    treasure t;
+    while (read(f, &t, sizeof(treasure)) == sizeof(treasure))
+    {
+        if (strcmp(t.id, id) == 0)
+        {
+            printf("id: %s - username: %s - gps: %.4f latitude, %.4f longitude\n",
+                   t.id, t.user, t.coord.lat, t.coord.longt);
+            printf("clue: %s - value: %d\n", t.clue, t.value);
+            printf("---------------------------\n");
+            break;
+        }
+    }
+    close(f);
+}
+
+void process_command()
+{
+    int fd = open("command.txt", O_RDONLY);
+    if (fd == -1)
+    {
+        printf("Eroare deschidere fisier command.txt\n");
+        return;
+    }
+
+    char line[256];
+    ssize_t bytes_read = read(fd, line, sizeof(line) - 1);
+    close(fd);
+
+    if (bytes_read <= 0)
+        return;
+    line[bytes_read] = '\0';
+    line[strcspn(line, "\n")] = '\0';
+
+    char *cmd = strtok(line, " ");
+    if (!cmd)
+        return;
+
+    if (strcmp(cmd, "list_hunts") == 0)
+    {
+        list_hunts();
+    }
+    else if (strcmp(cmd, "list_treasures") == 0)
+    {
+        char *hunt_id = strtok(NULL, " ");
+        if (hunt_id)
+            list_treasures(hunt_id);
+        else
+            printf("Argument lipsă pentru list_treasures\n");
+    }
+    else if (strcmp(cmd, "view_treasure") == 0)
+    {
+        char *hunt_id = strtok(NULL, " ");
+        char *treasure_id = strtok(NULL, " ");
+        if (hunt_id && treasure_id)
+            view_treasure(hunt_id, treasure_id);
+        else
+            printf("Argumente lipsă pentru view_treasure\n");
+    }
+    else
+    {
+        printf("Comandă necunoscută: %s\n", cmd);
+    }
+}
+
+int main(void)
+{
+    struct sigaction sa1, sa2;
+    sa1.sa_handler = handle_usr1;
+    sa2.sa_handler = handle_usr2;
+    sigemptyset(&sa1.sa_mask);
+    sigemptyset(&sa2.sa_mask);
+    sa1.sa_flags = 0;
+    sa2.sa_flags = 0;
+    sigaction(SIGUSR1, &sa1, NULL);
+    sigaction(SIGUSR2, &sa2, NULL);
+
+    printf("[Monitor] Aștept comenzi...\n");
+
+    while (1)
+    {
+        pause();
+
+        if (is_command_received())
+        {
+            process_command();
+            clear_command_flag();
+        }
+
+        if (is_stop_requested())
+        {
+            printf("[Monitor] Inchidere\n");
+            usleep(3000000); // 3 secunde
+            printf("[Monitor] Terminat\n");
+            exit(0);
+        }
+    }
+
+    return 0;
+}
