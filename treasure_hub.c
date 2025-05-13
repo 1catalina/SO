@@ -5,10 +5,11 @@
 #include <unistd.h>
 #include <signal.h>
 #include <sys/wait.h>
-#include <fcntl.h> 
+#include <fcntl.h>
 
 pid_t monitor_pid = -1;
 int monitor_running = 0;
+int monitor_stopping = 0;
 
 void handle_sigchld(int sig)
 {
@@ -17,6 +18,7 @@ void handle_sigchld(int sig)
     printf("Monitorul s-a incheiat cu statusul: %d\n", WEXITSTATUS(status));
     monitor_running = 0;
     monitor_pid = -1;
+    monitor_stopping = 0;
 }
 
 void send_cmnd(char *cmnd_line, int signal)
@@ -73,6 +75,7 @@ void start_monitor(void)
     }
 
     monitor_running = 1;
+    monitor_stopping = 0;
     printf("Monitor pornit (PID: %d)\n", monitor_pid);
 }
 
@@ -85,7 +88,7 @@ void stop_monitor(void)
     }
 
     send_cmnd("stop_monitor", SIGUSR2);
-    monitor_running = 0;
+    monitor_stopping = 1;
     printf("Monitor oprit\n");
 }
 
@@ -107,6 +110,12 @@ int main()
             break;
         command[strcspn(command, "\n")] = '\0';
 
+        if (monitor_stopping)
+        {
+            printf("Monitorul se opreste. Nu mai poti trimite comenzi.\n");
+            continue;
+        }
+
         if (strcmp(command, "exit") == 0)
         {
             if (monitor_running)
@@ -115,7 +124,7 @@ int main()
             }
             else
             {
-	      break;
+                break;
             }
         }
         else if (strcmp(command, "start_monitor") == 0)
@@ -125,7 +134,6 @@ int main()
         else if (strcmp(command, "stop_monitor") == 0)
         {
             stop_monitor();
-	   
         }
         else if (strncmp(command, "list_hunts", 10) == 0)
         {
@@ -147,4 +155,3 @@ int main()
 
     return 0;
 }
-

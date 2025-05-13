@@ -1,5 +1,4 @@
 #include <stdio.h>
-#include <stdio.h>
 #include <stdlib.h>
 #include <signal.h>
 #include <string.h>
@@ -57,7 +56,6 @@ void build_path(char *dest, char *dir)
     strcat(dest, "/treasures.dat");
 }
 
-
 void list_hunts()
 {
     DIR *d = opendir(".");
@@ -70,11 +68,8 @@ void list_hunts()
     struct dirent *entry;
     while ((entry = readdir(d)) != NULL)
     {
-        if (entry->d_type == DT_DIR &&
-            strcmp(entry->d_name, ".") != 0 &&
-            strcmp(entry->d_name, "..") != 0)
+        if (entry->d_type == DT_DIR && strcmp(entry->d_name, ".") != 0 && strcmp(entry->d_name, "..") != 0)
         {
-
             char path[512];
             snprintf(path, sizeof(path), "%s/treasures.dat", entry->d_name);
 
@@ -124,7 +119,6 @@ void list_treasures(char *hunt_id)
         printf("---------------------------\n");
     }
     close(f);
-
 }
 
 void view_treasure(char *hunt, char *id)
@@ -155,6 +149,12 @@ void view_treasure(char *hunt, char *id)
 
 void process_command()
 {
+    if (is_stop_requested())
+    {
+        printf("[Monitor] Comanda ignorata. Monitorul este in curs de oprire.\n");
+        return;
+    }
+
     int fd = open("command.txt", O_RDONLY);
     if (fd == -1)
     {
@@ -185,7 +185,7 @@ void process_command()
         if (hunt_id)
             list_treasures(hunt_id);
         else
-            printf("Argument lipsă pentru list_treasures\n");
+            printf("Argument insuficiente\n");
     }
     else if (strcmp(cmd, "view_treasure") == 0)
     {
@@ -194,11 +194,11 @@ void process_command()
         if (hunt_id && treasure_id)
             view_treasure(hunt_id, treasure_id);
         else
-            printf("Argumente lipsă pentru view_treasure\n");
+            printf("Argumente insuficente\n");
     }
     else
     {
-        printf("Comandă necunoscută: %s\n", cmd);
+        printf("Comanda necunoscuta\n");
     }
 }
 
@@ -214,7 +214,7 @@ int main(void)
     sigaction(SIGUSR1, &sa1, NULL);
     sigaction(SIGUSR2, &sa2, NULL);
 
-    printf("[Monitor] Aștept comenzi...\n");
+    printf("[Monitor] Astept comenzi\n");
 
     while (1)
     {
@@ -229,7 +229,7 @@ int main(void)
         if (is_stop_requested())
         {
             printf("[Monitor] Inchidere\n");
-            usleep(3000000); // 3 secunde
+            usleep(6000000);
             printf("[Monitor] Terminat\n");
             exit(0);
         }
