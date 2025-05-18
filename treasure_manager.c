@@ -265,7 +265,7 @@ void process_command()
 {
     if (is_stop_requested())
     {
-        printf("[Monitor] Comanda ignorata. Monitorul este in curs de oprire.\n");
+        printf("[Monitor] Comanda ignorata. Monitorul este in curs de oprire\n");
         return;
     }
 
@@ -327,91 +327,86 @@ void process_command()
 }		 
 int main(void)
 {
- 
     struct sigaction sa1, sa2;
     sa1.sa_handler = handle_usr1;
-    sa2.sa_handler = handle_usr2;
     sigemptyset(&sa1.sa_mask);
-    sigemptyset(&sa2.sa_mask);
     sa1.sa_flags = 0;
-    sa2.sa_flags = 0;
     sigaction(SIGUSR1, &sa1, NULL);
+
+    sa2.sa_handler = handle_usr2;
+    sigemptyset(&sa2.sa_mask);
+    sa2.sa_flags = 0;
     sigaction(SIGUSR2, &sa2, NULL);
 
-    printf("[Monitor] Astept comenzi\n");
-
-    while (1)
+    while (!is_stop_requested())
     {
-        pause();
-
         if (is_command_received())
         {
-            process_command();
             clear_command_flag();
+
+            FILE *f = fopen("command.txt", "r");
+            if (!f)
+            {
+                printf("Eroare deschidere command.txt\n");
+                continue;
+            }
+
+            char line[256];
+            if (fgets(line, sizeof(line), f))
+            {
+                line[strcspn(line, "\n")] = '\0';
+                char *token = strtok(line, " ");
+
+                if (strcmp(token, "list_hunts") == 0)
+                {
+                    list_hunts();
+                }
+                else if (strcmp(token, "list_treasures") == 0)
+                {
+                    char *hunt = strtok(NULL, " ");
+                    if (hunt)
+		      {
+			list_treasures(hunt);
+		      }
+                    else
+		      {
+			printf("Argumente insuficiente\n");
+		      }
+                }
+                else if (strcmp(token, "view_treasure") == 0)
+                {
+                    char *hunt = strtok(NULL, " ");
+                    char *id = strtok(NULL, " ");
+                    if (hunt && id)
+		      {
+			view(hunt, id);
+		      }
+                    else
+		      {
+			printf("Argumente lipsa\n");
+		      }
+                }
+                else if (strcmp(token, "stop_monitor") == 0)
+                {
+                    break;
+                }
+                else
+                {
+                    printf("Comanda necunoscuta\n");
+                }
+            }
+
+            fclose(f);
         }
 
-        if (is_stop_requested())
-        {
-            printf("[Monitor] Inchidere\n");
-            usleep(6000000);
-            printf("[Monitor] Terminat\n");
-            exit(0);
-        }
+        usleep(100000); 
     }
-  /*
-  if(argc < 2)
-    {
-      printf("Argumente insuficiente\n");
-      exit(-1);
-    }
-  if(strcmp(argv[1], "add")==0)
-    {
-      add_treasure(argc, argv);
-    }
-  else
-    if(strcmp(argv[1], "list")==0)
-      {
-	 if (argc != 3)
-	   {
-	     	printf("Argumente insuficiente\n");
-		exit(-1);
-	    }
-	list_treasures(argv[2]);
-      }
-    else
-      if(strcmp(argv[1], "view")==0)
-	{
-	  if(argc != 4)
-	    {
-	      	printf("Argumente insuficiente\n");
-		exit(-1);
-	    }
-	  view(argv[2], argv[3]);
-	}
-    else
-      if (strcmp(argv[1], "Remove_treasure") == 0)
-	{
-	   if(argc!=4)
-	      {
-		printf("Argumente insuficiente\n");
-		exit(-1);
-	      }
-	  remove_treasure(argv[2], argv[3]);
-	}
-      else
-	if (strcmp(argv[1], "Remove_hunt") == 0)
-	  {
-	    if(argc!=3)
-	      {
-		printf("Argumente insuficiente\n");
-		exit(-1);
-	      }
-	    remove_hunt(argv[2]);
-           }
-       else
-        {
-          printf("Comanda invalida\n");
-        }
-  */
-  return 0;
+
+   printf("[Monitor] Inchidere\n");
+   usleep(6000000);
+   printf("[Monitor] Terminat\n");
+   exit(0);
+    return 0;
+
+
 }

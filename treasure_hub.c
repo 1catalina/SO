@@ -6,6 +6,7 @@
 #include <signal.h>
 #include <sys/wait.h>
 #include <fcntl.h>
+#include <dirent.h>
 
 pid_t monitor_pid = -1;
 int monitor_running = 0;
@@ -91,7 +92,75 @@ void stop_monitor(void)
     monitor_stopping = 1;
     printf("Monitor oprit\n");
 }
+void calculate_score()
+{
+    DIR *d = opendir(".");
+    if (!d)
+    {
+        perror("Eroare deschidere director curent\n");
+        return;
+    }
 
+    struct dirent *entry;
+    while ((entry = readdir(d)) != NULL)
+    {
+        if (entry->d_type == DT_DIR &&
+            strcmp(entry->d_name, ".") != 0 &&
+            strcmp(entry->d_name, "..") != 0)
+        {
+            char path[512];
+            snprintf(path, sizeof(path), "%s/treasures.dat", entry->d_name);
+
+            int f = open(path, O_RDONLY);
+            if (f < 0)
+                continue;
+            close(f);
+
+            int pipefd[2];
+            if (pipe(pipefd) == -1)
+            {
+                perror("Eroare la crearea pipe-ului\n");
+                continue;
+            }
+
+            pid_t pid = fork();
+            if (pid == -1)
+            {
+                perror("Eroare fork\n");
+                close(pipefd[0]);
+                close(pipefd[1]);
+                continue;
+            }
+
+            if (pid == 0)
+            {
+                close(pipefd[0]);
+                dup2(pipefd[1], STDOUT_FILENO); 
+                close(pipefd[1]);
+
+                execlp("./score_calculator", "score_calculator", entry->d_name, NULL);
+                perror("Eroare la exec\n");
+                exit(EXIT_FAILURE);
+            }
+            else
+            {
+                close(pipefd[1]); 
+
+                char buffer[1024];
+                ssize_t bytes_read;
+                printf("Scoruri pentru hunt-ul %s:\n", entry->d_name);
+                while ((bytes_read = read(pipefd[0], buffer, sizeof(buffer) - 1)) > 0)
+                {
+                    buffer[bytes_read] = '\0';
+                    printf("%s", buffer);
+                }
+                close(pipefd[0]);
+                waitpid(pid, NULL, 0);
+            }
+        }
+    }
+    closedir(d);
+}
 int main()
 {
     struct sigaction sa;
@@ -149,6 +218,10 @@ int main()
         {
             send_cmnd(command, SIGUSR1);
         }
+	else if (strcmp(command, "calculate_score") == 0)
+        {
+	    calculate_score();
+	}
         else
         {
             printf("Comanda invalida\n");
