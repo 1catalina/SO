@@ -3,3 +3,5 @@ operatie: add
 operatie: list
 operatie: view
 operatie: remove_treasure
+operatie: list
+operatie: View

@@ -1,10 +1,11 @@
 #include <stdio.h>
 #include <stdlib.h>
+#include <signal.h>
+#include <string.h>
+#include <unistd.h>
+#include <dirent.h>
 #include <sys/stat.h>
 #include <fcntl.h>
-#include <unistd.h>
-//#include <errno.h>
-#include <string.h>
 
 
 typedef struct gps
@@ -20,6 +21,34 @@ typedef struct treasure{
   char clue[10];
   int value;
 }treasure;
+
+static sig_atomic_t stop_requested_flag = 0;
+static sig_atomic_t command_received_flag = 0;
+
+void handle_usr1(int sig)
+{
+    command_received_flag = 1;
+}
+
+void handle_usr2(int sig)
+{
+    stop_requested_flag = 1;
+}
+
+int is_command_received()
+{
+    return command_received_flag;
+}
+
+int is_stop_requested()
+{
+    return stop_requested_flag;
+}
+
+void clear_command_flag()
+{
+    command_received_flag = 0;
+}
 
 void build_path(char *dest, char *dir)
 {
@@ -80,16 +109,49 @@ void add_treasure(int argc, char **argv)
   int f;
   if((f=open(path, O_WRONLY | O_CREAT | O_APPEND, 0644))==-1)
     {
-      printf("eroare deschidere fisier\n");
+      printf("Eroare deschidere fisier\n");
       exit(-1);
     }
   write(f, &t, sizeof(treasure));
   close(f);
 
-  log_operation(id, "add");
+  log_operation(id, "Add");
   create_simlink(id);
 }
+void list_hunts()
+{
+    DIR *d = opendir(".");
+    if (!d)
+    {
+        perror("Nu pot deschide directorul curent");
+        return;
+    }
 
+    struct dirent *entry;
+    while ((entry = readdir(d)) != NULL)
+    {
+        if (entry->d_type == DT_DIR && strcmp(entry->d_name, ".") != 0 && strcmp(entry->d_name, "..") != 0)
+        {
+            char path[512];
+            snprintf(path, sizeof(path), "%s/treasures.dat", entry->d_name);
+
+            int f = open(path, O_RDONLY);
+            if (f < 0)
+                continue;
+
+            int count = 0;
+            treasure t;
+            while (read(f, &t, sizeof(treasure)) == sizeof(treasure))
+            {
+                count++;
+            }
+            close(f);
+
+            printf("Hunt: %s - %d comori\n", entry->d_name, count);
+        }
+    }
+    closedir(d);
+}
 void list_treasures(char *hunt_id)
 {
   char path[512];
@@ -97,7 +159,7 @@ void list_treasures(char *hunt_id)
   int f;
   if((f=open(path, O_RDONLY)) ==-1)
     {
-      printf("eroare deschidere fisier\n");
+      printf("Eroare deschidere fisier\n");
       exit(-1);
     }
     struct stat st;
@@ -107,8 +169,6 @@ void list_treasures(char *hunt_id)
     printf("File size: %ld bytes\n", st.st_size);
     printf("Last modified: %ld\n", st.st_mtime);
     printf("---------------------------\n");
-    
-    ///-------------------------------------
     
     treasure t;
     while((read(f, &t, sizeof(treasure))) == sizeof(treasure))
@@ -128,7 +188,7 @@ void view(char *hunt, char *id)
   int f;
   if((f=open(path, O_RDONLY)) == -1)
     {
-      printf("eroare deschidere fisier\n");
+      printf("Eroare deschidere fisier\n");
       exit(-1);
     }
   struct stat st;
@@ -145,7 +205,7 @@ void view(char *hunt, char *id)
       }
   close(f);
 
-  log_operation(hunt, "view");
+  log_operation(hunt, "View");
  
 }
 
@@ -157,7 +217,7 @@ void remove_treasure(char *hunt_id, char *id)
   int f=open(path, O_RDONLY);
   if(f==-1)
     {
-      printf("eroare deschidere fisier\n");
+      printf("Eroare deschidere fisier\n");
       exit(-1);
     }
 
@@ -176,7 +236,7 @@ void remove_treasure(char *hunt_id, char *id)
 
   if((f=open(path, O_WRONLY | O_TRUNC))==-1)
     {
-       printf("eroare deschidere fisier\n");
+       printf("Eroare deschidere fisier\n");
        exit(-1);
     }
   
@@ -184,7 +244,7 @@ void remove_treasure(char *hunt_id, char *id)
     close(f);
     free(buffer);
 
-    log_operation(hunt_id, "remove_treasure");
+    log_operation(hunt_id, "Remove_treasure");
 }
  void remove_hunt(char *hunt_id)
  {
@@ -201,12 +261,107 @@ void remove_treasure(char *hunt_id, char *id)
     sprintf(symlink_name, "logged_hunt-%s", hunt_id);
     unlink(symlink_name);  
  }
-		 
-int main(int argc, char **argv)
+void process_command()
 {
+    if (is_stop_requested())
+    {
+        printf("[Monitor] Comanda ignorata. Monitorul este in curs de oprire.\n");
+        return;
+    }
+
+    int fd = open("command.txt", O_RDONLY);
+    if (fd == -1)
+    {
+        printf("Eroare deschidere fisier command.txt\n");
+        return;
+    }
+
+    char line[256];
+    ssize_t bytes_read = read(fd, line, sizeof(line) - 1);
+    close(fd);
+
+    if (bytes_read <= 0)
+      {
+	return;
+      }
+    line[bytes_read] = '\0';
+    line[strcspn(line, "\n")] = '\0';
+
+    char *cmd = strtok(line, " ");
+    if (!cmd)
+        return;
+
+    if (strcmp(cmd, "list_hunts") == 0)
+    {
+        list_hunts();
+    }
+    else
+      if (strcmp(cmd, "list_treasures") == 0)
+      {
+        char *hunt_id = strtok(NULL, " ");
+        if (hunt_id)
+	  {
+	    list_treasures(hunt_id);
+	  }
+        else
+	  {
+	    printf("Argument insuficiente\n");
+	  }
+      }
+      else
+	if (strcmp(cmd, "view_treasure") == 0)
+        {
+        char *hunt_id = strtok(NULL, " ");
+        char *treasure_id = strtok(NULL, " ");
+        if (hunt_id && treasure_id)
+	  {
+	    view(hunt_id, treasure_id);
+	  }
+        else
+            printf("Argumente insuficente\n");
+       }
+    else
+    {
+        printf("Comanda invalida\n");
+    }
+}		 
+int main(void)
+{
+ 
+    struct sigaction sa1, sa2;
+    sa1.sa_handler = handle_usr1;
+    sa2.sa_handler = handle_usr2;
+    sigemptyset(&sa1.sa_mask);
+    sigemptyset(&sa2.sa_mask);
+    sa1.sa_flags = 0;
+    sa2.sa_flags = 0;
+    sigaction(SIGUSR1, &sa1, NULL);
+    sigaction(SIGUSR2, &sa2, NULL);
+
+    printf("[Monitor] Astept comenzi\n");
+
+    while (1)
+    {
+        pause();
+
+        if (is_command_received())
+        {
+            process_command();
+            clear_command_flag();
+        }
+
+        if (is_stop_requested())
+        {
+            printf("[Monitor] Inchidere\n");
+            usleep(6000000);
+            printf("[Monitor] Terminat\n");
+            exit(0);
+        }
+    }
+  /*
   if(argc < 2)
     {
-      printf("argumente insuficiente\n");
+      printf("Argumente insuficiente\n");
       exit(-1);
     }
   if(strcmp(argv[1], "add")==0)
@@ -218,7 +373,7 @@ int main(int argc, char **argv)
       {
 	 if (argc != 3)
 	   {
-	     	printf("argumente insuficiente\n");
+	     	printf("Argumente insuficiente\n");
 		exit(-1);
 	    }
 	list_treasures(argv[2]);
@@ -228,35 +383,35 @@ int main(int argc, char **argv)
 	{
 	  if(argc != 4)
 	    {
-	      	printf("argumente insuficiente\n");
+	      	printf("Argumente insuficiente\n");
 		exit(-1);
 	    }
 	  view(argv[2], argv[3]);
 	}
     else
-      if (strcmp(argv[1], "remove_treasure") == 0)
+      if (strcmp(argv[1], "Remove_treasure") == 0)
 	{
 	   if(argc!=4)
 	      {
-		printf("argumente insuficiente\n");
+		printf("Argumente insuficiente\n");
 		exit(-1);
 	      }
 	  remove_treasure(argv[2], argv[3]);
 	}
       else
-	if (strcmp(argv[1], "remove_hunt") == 0)
+	if (strcmp(argv[1], "Remove_hunt") == 0)
 	  {
 	    if(argc!=3)
 	      {
-		printf("argumente insuficiente\n");
+		printf("Argumente insuficiente\n");
 		exit(-1);
 	      }
 	    remove_hunt(argv[2]);
            }
        else
         {
-          printf("comanda invalida\n");
+          printf("Comanda invalida\n");
         }
-  
+  */
   return 0;
 }

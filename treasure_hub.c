@@ -69,13 +69,13 @@ void start_monitor(void)
 
     if (monitor_pid == 0)
     {
-        execl("./monitor", "monitor", NULL);
+        execl("./treasure_manager", "treasure_manager", NULL);
         perror("Eroare execl\n");
         exit(-1);
     }
 
     monitor_running = 1;
-    monitor_stopping = 0;
+    monitor_stopping = 0;   ///
     printf("Monitor pornit (PID: %d)\n", monitor_pid);
 }
 
@@ -107,12 +107,14 @@ int main()
         printf(">>> ");
         fflush(stdout);
         if (!fgets(command, sizeof(command), stdin))
-            break;
+	  {
+	    break;
+	  }
         command[strcspn(command, "\n")] = '\0';
 
-        if (monitor_stopping)
+        if (monitor_stopping)   ///
         {
-            printf("Monitorul se opreste. Nu mai poti trimite comenzi.\n");
+            printf("Monitorul se opreste. Nu mai poti trimite comenzi\n");
             continue;
         }
 
