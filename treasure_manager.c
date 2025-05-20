@@ -60,7 +60,7 @@ void build_logged_path(char *dest, char *dir)
 {
   strcpy(dest, dir);
   strcat(dest, "/logged_hunt.txt");
-  }
+}
 void create_simlink(char *hunt_id)
 {
    char old[256], new[256];
@@ -123,8 +123,8 @@ void list_hunts()
     DIR *d = opendir(".");
     if (!d)
     {
-        perror("Nu pot deschide directorul curent");
-        return;
+        printf("Eroare deschidere director curent\n");
+        exit(-1);
     }
 
     struct dirent *entry;
@@ -133,11 +133,13 @@ void list_hunts()
         if (entry->d_type == DT_DIR && strcmp(entry->d_name, ".") != 0 && strcmp(entry->d_name, "..") != 0)
         {
             char path[512];
-            snprintf(path, sizeof(path), "%s/treasures.dat", entry->d_name);
+            build_path(path, entry->d_name);
 
-            int f = open(path, O_RDONLY);
-            if (f < 0)
-                continue;
+            int f;
+            if ((f=open(path, O_RDONLY)) < 0)
+	      {
+		continue;
+	      }
 
             int count = 0;
             treasure t;
@@ -185,6 +187,7 @@ void view(char *hunt, char *id)
 {
   char path[512];
   build_path(path, hunt);
+  
   int f;
   if((f=open(path, O_RDONLY)) == -1)
     {
@@ -241,25 +244,25 @@ void remove_treasure(char *hunt_id, char *id)
     }
   
   write(f, buffer, cnt*sizeof(treasure));
-    close(f);
-    free(buffer);
+  close(f);
+  free(buffer);
 
-    log_operation(hunt_id, "Remove_treasure");
+  log_operation(hunt_id, "Remove_treasure");
 }
  void remove_hunt(char *hunt_id)
  {
   char path[512];
-    build_path(path, hunt_id);
-    unlink(path); 
+  build_path(path, hunt_id);
+  unlink(path); 
 
-    build_logged_path(path, hunt_id);
-    unlink(path); 
+  build_logged_path(path, hunt_id);
+  unlink(path); 
 
-    rmdir(hunt_id); 
+  rmdir(hunt_id); 
 
-    char symlink_name[256];
-    sprintf(symlink_name, "logged_hunt-%s", hunt_id);
-    unlink(symlink_name);  
+  char symlink_name[256];
+  sprintf(symlink_name, "logged_hunt-%s", hunt_id);
+  unlink(symlink_name);  
  }
 void process_command()
 {
@@ -325,8 +328,59 @@ void process_command()
         printf("Comanda invalida\n");
     }
 }		 
-int main(void)
+int main(int argc, char **argv)
 {
+    if (argc > 1)
+    {
+        if (strcmp(argv[1], "list") == 0)
+        {
+            if (argc != 3)
+            {
+                printf("Argumente insuficiente\n");
+                exit(-1);
+            }
+            list_treasures(argv[2]);
+        }
+        else if (strcmp(argv[1], "view") == 0)
+        {
+            if (argc != 4)
+            {
+                printf("Argumente insuficiente\n");
+                exit(-1);
+            }
+            view(argv[2], argv[3]);
+        }
+        else if (strcmp(argv[1], "remove_treasure") == 0)
+        {
+            if (argc != 4)
+            {
+                printf("Argumente insuficiente\n");
+                exit(-1);
+            }
+            remove_treasure(argv[2], argv[3]);
+        }
+        else if (strcmp(argv[1], "remove_hunt") == 0)
+        {
+            if (argc != 3)
+            {
+                printf("Argumente insuficiente\n");
+                exit(-1);
+            }
+            remove_hunt(argv[2]);
+        }
+        else if (strcmp(argv[1], "add") == 0)
+        {
+            add_treasure(argc, argv);
+        }
+        else
+        {
+            printf("Comandă invalidă\n");
+            exit(-1);
+        }
+
+        return 0;
+    }
+
     struct sigaction sa1, sa2;
     sa1.sa_handler = handle_usr1;
     sigemptyset(&sa1.sa_mask);
@@ -338,75 +392,23 @@ int main(void)
     sa2.sa_flags = 0;
     sigaction(SIGUSR2, &sa2, NULL);
 
+    printf("[Monitor] Pornit. Astept comenzi...\n");
+
     while (!is_stop_requested())
     {
         if (is_command_received())
         {
             clear_command_flag();
-
-            FILE *f = fopen("command.txt", "r");
-            if (!f)
-            {
-                printf("Eroare deschidere command.txt\n");
-                continue;
-            }
-
-            char line[256];
-            if (fgets(line, sizeof(line), f))
-            {
-                line[strcspn(line, "\n")] = '\0';
-                char *token = strtok(line, " ");
-
-                if (strcmp(token, "list_hunts") == 0)
-                {
-                    list_hunts();
-                }
-                else if (strcmp(token, "list_treasures") == 0)
-                {
-                    char *hunt = strtok(NULL, " ");
-                    if (hunt)
-		      {
-			list_treasures(hunt);
-		      }
-                    else
-		      {
-			printf("Argumente insuficiente\n");
-		      }
-                }
-                else if (strcmp(token, "view_treasure") == 0)
-                {
-                    char *hunt = strtok(NULL, " ");
-                    char *id = strtok(NULL, " ");
-                    if (hunt && id)
-		      {
-			view(hunt, id);
-		      }
-                    else
-		      {
-			printf("Argumente lipsa\n");
-		      }
-                }
-                else if (strcmp(token, "stop_monitor") == 0)
-                {
-                    break;
-                }
-                else
-                {
-                    printf("Comanda necunoscuta\n");
-                }
-            }
-
-            fclose(f);
+            process_command();
         }
 
         usleep(100000); 
     }
 
-   printf("[Monitor] Inchidere\n");
-   usleep(6000000);
-   printf("[Monitor] Terminat\n");
-   exit(0);
+    printf("[Monitor] Inchidere\n");
+    usleep(6000000);
+    printf("[Monitor] Terminat\n");
     return 0;
-
-
 }
+
+ 
